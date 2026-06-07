@@ -1,0 +1,25 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routers import auth, donations, requests
+
+app = FastAPI(
+    title="Tayora Sustain API",
+    description="Backend API for the Tayora Sustain textile waste exchange platform",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(donations.router, prefix="/api/v1/donations", tags=["Donations"])
+app.include_router(requests.router, prefix="/api/v1/requests", tags=["Requests"])
+
+@app.get("/")
+def root():
+    return {"message": "Tayora Sustain API is running"}
