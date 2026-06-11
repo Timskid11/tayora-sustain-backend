@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, donations, requests
+from app.database import Base, engine
+from app.models import user, donation, request
+
+# Create tables on startup
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Tayora Sustain API",
