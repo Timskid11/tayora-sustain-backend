@@ -24,7 +24,15 @@ def create_donation(
 
 
 @router.get("/", response_model=List[DonationOut])
-def get_donations(db: Session = Depends(get_db)):
+def get_donations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(Donation).filter(Donation.donor_id == current_user.id).all()
+
+
+@router.get("/all", response_model=List[DonationOut])
+def get_all_donations(db: Session = Depends(get_db)):
     return db.query(Donation).all()
 
 

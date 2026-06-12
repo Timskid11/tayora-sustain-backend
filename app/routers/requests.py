@@ -24,7 +24,15 @@ def create_request(
 
 
 @router.get("/", response_model=List[MaterialRequestOut])
-def get_requests(db: Session = Depends(get_db)):
+def get_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(MaterialRequest).filter(MaterialRequest.requester_id == current_user.id).all()
+
+
+@router.get("/all", response_model=List[MaterialRequestOut])
+def get_all_requests(db: Session = Depends(get_db)):
     return db.query(MaterialRequest).all()
 
 
