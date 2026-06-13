@@ -5,6 +5,8 @@ from app.models.donation import Donation, DonationStatus, DonationCategory
 from app.models.request import MaterialRequest, RequestStatus
 from app.core.dependencies import get_current_user
 from app.models.user import User, UserRole
+from app.schemas.donation import DonationOut
+from app.schemas.request import MaterialRequestOut
 from pydantic import BaseModel
 from typing import Optional
 
@@ -17,9 +19,24 @@ def require_admin(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+class MessageResponse(BaseModel):
+    message: str
+
+
+class CategorizeBody(BaseModel):
+    category: DonationCategory
+
+
+class ImpactResponse(BaseModel):
+    total_users: int
+    total_donations: int
+    total_requests: int
+    approved_donations: int
+
+
 # ── DONATION MANAGEMENT ──────────────────────────────────────────
 
-@router.patch("/donations/{donation_id}/approve")
+@router.patch("/donations/{donation_id}/approve", response_model=DonationOut)
 def approve_donation(
     donation_id: int,
     db: Session = Depends(get_db),
@@ -30,10 +47,11 @@ def approve_donation(
         raise HTTPException(status_code=404, detail="Donation not found")
     donation.status = DonationStatus.approved
     db.commit()
-    return {"message": "Donation approved"}
+    db.refresh(donation)
+    return donation
 
 
-@router.patch("/donations/{donation_id}/reject")
+@router.patch("/donations/{donation_id}/reject", response_model=DonationOut)
 def reject_donation(
     donation_id: int,
     db: Session = Depends(get_db),
@@ -44,14 +62,11 @@ def reject_donation(
         raise HTTPException(status_code=404, detail="Donation not found")
     donation.status = DonationStatus.rejected
     db.commit()
-    return {"message": "Donation rejected"}
+    db.refresh(donation)
+    return donation
 
 
-class CategorizeBody(BaseModel):
-    category: DonationCategory
-
-
-@router.patch("/donations/{donation_id}/categorize")
+@router.patch("/donations/{donation_id}/categorize", response_model=DonationOut)
 def categorize_donation(
     donation_id: int,
     body: CategorizeBody,
@@ -63,12 +78,13 @@ def categorize_donation(
         raise HTTPException(status_code=404, detail="Donation not found")
     donation.category = body.category
     db.commit()
-    return {"message": f"Donation categorized as {body.category}"}
+    db.refresh(donation)
+    return donation
 
 
 # ── REQUEST MANAGEMENT ───────────────────────────────────────────
 
-@router.patch("/requests/{request_id}/approve")
+@router.patch("/requests/{request_id}/approve", response_model=MaterialRequestOut)
 def approve_request(
     request_id: int,
     db: Session = Depends(get_db),
@@ -79,10 +95,11 @@ def approve_request(
         raise HTTPException(status_code=404, detail="Request not found")
     req.status = RequestStatus.matched
     db.commit()
-    return {"message": "Request approved"}
+    db.refresh(req)
+    return req
 
 
-@router.patch("/requests/{request_id}/reject")
+@router.patch("/requests/{request_id}/reject", response_model=MaterialRequestOut)
 def reject_request(
     request_id: int,
     db: Session = Depends(get_db),
@@ -93,12 +110,13 @@ def reject_request(
         raise HTTPException(status_code=404, detail="Request not found")
     req.status = RequestStatus.closed
     db.commit()
-    return {"message": "Request rejected"}
+    db.refresh(req)
+    return req
 
 
 # ── IMPACT DASHBOARD ─────────────────────────────────────────────
 
-@router.get("/impact")
+@router.get("/impact", response_model=ImpactResponse)
 def get_impact(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin)
