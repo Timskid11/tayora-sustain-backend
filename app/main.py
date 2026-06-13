@@ -1,10 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, donations, requests
+from app.routers import auth, donations, requests, admin
 from app.database import Base, engine
 from app.models import user, donation, request
 
-# Create tables on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -24,6 +23,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(donations.router, prefix="/api/v1/donations", tags=["Donations"])
 app.include_router(requests.router, prefix="/api/v1/requests", tags=["Requests"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
 @app.get("/")
 def root():
