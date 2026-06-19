@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, BackgroundTasks
 from sqlalchemy.orm import Session
 from jose import JWTError
 from app.database import get_db
@@ -20,7 +20,11 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
-async def register(user: UserCreate, db: Session = Depends(get_db)):
+async def register(
+    user: UserCreate, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db)
+):
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -39,14 +43,13 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     token = create_verification_token(new_user.id)
     verify_link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
 
-    try:
-        await send_email(
-            subject="Verify your Tayora Sustain account",
-            recipients=[new_user.email],
-            body=f"<p>Welcome to Tayora Sustain! Click below to verify your account:</p><a href='{verify_link}'>Verify Email</a>"
-        )
-    except Exception:
-        pass
+    # Hand the email task to the background so the API responds instantly
+    background_tasks.add_task(
+        send_email,
+        subject="Verify your Tayora Sustain account",
+        recipients=[new_user.email],
+        body=f"<p>Welcome to Tayora Sustain! Click below to verify your account:</p><a href='{verify_link}'>Verify Email</a>"
+    )
 
     return new_user
 
@@ -93,7 +96,11 @@ def logout(response: Response):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-async def forgot_password(payload: ForgotPasswordPayload, db: Session = Depends(get_db)):
+async def forgot_password(
+    payload: ForgotPasswordPayload, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:
         raise HTTPException(status_code=404, detail="Email not found")
@@ -101,15 +108,79 @@ async def forgot_password(payload: ForgotPasswordPayload, db: Session = Depends(
     token = create_reset_token(user.id)
     reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
 
-    try:
-        await send_email(
-            subject="Reset your Tayora Sustain password",
-            recipients=[user.email],
-            body=f"<p>Click below to reset your password. This link expires in 30 minutes.</p><a href='{reset_link}'>Reset Password</a>"
-        )
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to send email")
+    background_tasks.add_task(
+        send_email,
+        subject="Reset your Tayora Sustain password",
+        recipients=[user.email],
+        body=f"<p>Click below to reset your password. This link expires in 30 minutes.</p><a href='{reset_link}'>Reset Password</a>"
+    )
 
+    return {"message": "Password reset link sent to your email"}
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(payload: ResetPasswordPayload, db: Session = Depends(get_db)):
+    try:
+        decoded = decode_token(payload.token)
+        if decoded.get("type") != "reset":
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+        user_id = decoded.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+
+    return {"message": "Password reset successful"}
+
+
+@router.post("/verify-email", response_model=MessageResponse)
+def verify_email(payload: VerifyEmailPayload, db: Session = Depends(get_db)):
+    try:
+        decoded = decode_token(payload.token)
+        if decoded.get("type") != "verify":
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+        user_id = decoded.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_verified = True
+    db.commit()
+
+    return {"message": "Email verified successfully"}
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+async def resend_verification(
+    payload: ForgotPasswordPayload, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Email not found")
+    if user.is_verified:
+        return {"message": "Email is already verified"}
+
+    token = create_verification_token(user.id)
+    verify_link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+
+    background_tasks.add_task(
+        send_email,
+        subject="Verify your Tayora Sustain account",
+        recipients=[user.email],
+        body=f"<p>Click below to verify your account:</p><a href='{verify_link}'>Verify Email</a>"
+    )
+
+    return {"message": "Verification email resent"}
     return {"message": "Password reset link sent to your email"}
 
 
